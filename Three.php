@@ -238,7 +238,7 @@
         const { wallGroup, windowPositionY, wallWidth, wallHeight, wallDepth, wallBottom, wallTop } = createWallWithSmartSizing(width, height, thickness);
         scene.add(wallGroup);
 
-        // Create detailed casement window with FIXED hinges
+        // Create detailed casement window with NORMAL COLORS and NO HANDLE
         function createDetailedCasementWindow(windowWidth, windowHeight, frameThickness, windowPositionY) {
             const windowGroup = new THREE.Group();
             
@@ -246,19 +246,17 @@
             const h = windowHeight * scale;
             const t = frameThickness * scale;
             
-            // Frame material
+            // Normal colors
             const frameMaterial = new THREE.MeshPhongMaterial({ 
                 color: 0x8B4513,
                 shininess: 30
             });
             
-            // Sash material
             const sashMaterial = new THREE.MeshPhongMaterial({ 
                 color: 0xDEB887,
                 shininess: 40
             });
             
-            // Hardware material
             const hardwareMaterial = new THREE.MeshPhongMaterial({ 
                 color: 0x696969,
                 shininess: 80
@@ -275,7 +273,6 @@
             const zOffset = 0.1 * scale;
             const frameDepth = t * 1.5;
             const sashDepth = t;
-            const stopDepth = t * 0.3;
             const frameWidth = t * 1.2;
             const sashWidth = t * 0.8;
             const sashClearance = 0.2 * scale; // Proper clearance
@@ -283,7 +280,7 @@
             // 1. MAIN FRAME (fixed to wall)
             const mainFrameGroup = new THREE.Group();
             
-            // Frame pieces
+            // Frame pieces - FRONT FACING (positive Z is front)
             const topFrame = new THREE.Mesh(new THREE.BoxGeometry(w, frameWidth, frameDepth), frameMaterial);
             topFrame.position.y = h/2 - frameWidth/2;
             topFrame.position.z = frameDepth/2 + zOffset;
@@ -304,30 +301,7 @@
             rightFrame.position.z = frameDepth/2 + zOffset;
             mainFrameGroup.add(rightFrame);
 
-            // 2. STOPS
-            const stopMaterial = frameMaterial;
-            const stopOffset = frameWidth * 0.8;
-            const stopWidth = t * 0.4;
-            
-            // Top stop
-            const topStop = new THREE.Mesh(new THREE.BoxGeometry(w - stopOffset*2, stopWidth, stopDepth), stopMaterial);
-            topStop.position.y = h/2 - stopOffset;
-            topStop.position.z = frameDepth - stopDepth/2 + zOffset;
-            mainFrameGroup.add(topStop);
-
-            // Bottom stop
-            const bottomStop = new THREE.Mesh(new THREE.BoxGeometry(w - stopOffset*2, stopWidth, stopDepth), stopMaterial);
-            bottomStop.position.y = -h/2 + stopOffset;
-            bottomStop.position.z = frameDepth - stopDepth/2 + zOffset;
-            mainFrameGroup.add(bottomStop);
-
-            // Left stop
-            const leftStop = new THREE.Mesh(new THREE.BoxGeometry(stopWidth, h - stopOffset*2, stopDepth), stopMaterial);
-            leftStop.position.x = -w/2 + stopOffset;
-            leftStop.position.z = frameDepth - stopDepth/2 + zOffset;
-            mainFrameGroup.add(leftStop);
-
-            // 3. SASH (movable part) - CORRECTED dimensions to prevent clipping
+            // 2. SASH (movable part) - SIMPLIFIED (no cross bars)
             const sashGroup = new THREE.Group();
             
             // Calculate sash dimensions to fit perfectly within frame with proper clearance
@@ -366,70 +340,68 @@
             sashGlass.position.z = sashDepth/2 + 0.005;
             sashGroup.add(sashGlass);
 
-            // Sash cross bars - CORRECTED dimensions
-            const sashCrossBar = new THREE.Mesh(
-                new THREE.BoxGeometry(glassWidth, sashWidth/2, sashDepth/2),
-                sashMaterial
-            );
-            sashCrossBar.position.z = sashDepth/2;
-            sashGroup.add(sashCrossBar);
+            // Position sash within frame - FRONT FACING
+            sashGroup.position.z = zOffset; // Front aligned with frame front
 
-            const sashVerticalBar = new THREE.Mesh(
-                new THREE.BoxGeometry(sashWidth/2, glassHeight, sashDepth/2),
-                sashMaterial
-            );
-            sashVerticalBar.position.z = sashDepth/2;
-            sashGroup.add(sashVerticalBar);
-
-            // Position sash within frame - NO GAP at pivot
-            sashGroup.position.z = frameDepth - sashDepth + zOffset;
-
-            // 4. HINGES - EXTERNAL placement with realistic dimensions
+            // 3. WORKING HINGES - Split into frame and sash parts (NO PIVOT POINTS)
             const hingeWidth = 6 * scale;   // 6cm wide
             const hingeHeight = 10 * scale; // 10cm tall
-            const hingeDepth = 1.5 * scale; // 1.5cm deep (HALVED from 3cm)
+            const hingeThickness = 0.5 * scale; // 0.5cm thick
             
             // Calculate hinge positions (top 1/4 and bottom 1/4 from edges)
             const topHingeY = h/2 - frameWidth - hingeHeight/2 - (h * 0.1); // 10% from top
             const bottomHingeY = -h/2 + frameWidth + hingeHeight/2 + (h * 0.1); // 10% from bottom
             
-            // PERFECT PIVOT POINT - EXTERNAL placement (outside the frame)
-            const pivotX = -w/2 - hingeWidth/2; // Positioned outside the frame
+            // CORRECT PIVOT POINT - Front outermost edge of the sash
+            const pivotX = -w/2 + frameWidth; // Left edge of the sash
+            const pivotZ = 0; // FRONT face of the sash
             
-            // Create hinge group for better positioning
-            const hingeGroup = new THREE.Group();
+            // Create hinge groups
+            const frameHingeGroup = new THREE.Group();
+            const sashHingeGroup = new THREE.Group();
             
-            // Top hinge - EXTERNAL placement
-            const topHinge = new THREE.Mesh(
-                new THREE.BoxGeometry(hingeWidth, hingeHeight, hingeDepth),
+            // Frame hinge parts (attached to main frame)
+            const frameHingeDepth = hingeWidth / 2;
+            const topFrameHinge = new THREE.Mesh(
+                new THREE.BoxGeometry(frameHingeDepth, hingeHeight, hingeThickness),
                 hardwareMaterial
             );
-            topHinge.position.set(0, topHingeY, frameDepth/2);
-            hingeGroup.add(topHinge);
+            topFrameHinge.position.set(-frameHingeDepth/2, topHingeY, pivotZ);
+            frameHingeGroup.add(topFrameHinge);
             
-            // Bottom hinge - EXTERNAL placement
-            const bottomHinge = new THREE.Mesh(
-                new THREE.BoxGeometry(hingeWidth, hingeHeight, hingeDepth),
+            const bottomFrameHinge = new THREE.Mesh(
+                new THREE.BoxGeometry(frameHingeDepth, hingeHeight, hingeThickness),
                 hardwareMaterial
             );
-            bottomHinge.position.set(0, bottomHingeY, frameDepth/2);
-            hingeGroup.add(bottomHinge);
+            bottomFrameHinge.position.set(-frameHingeDepth/2, bottomHingeY, pivotZ);
+            frameHingeGroup.add(bottomFrameHinge);
             
-            // Position hinge group outside the frame
-            hingeGroup.position.x = pivotX;
-            mainFrameGroup.add(hingeGroup);
+            // Sash hinge parts (attached to sash)
+            const sashHingeDepth = hingeWidth / 2;
+            const topSashHinge = new THREE.Mesh(
+                new THREE.BoxGeometry(sashHingeDepth, hingeHeight, hingeThickness),
+                hardwareMaterial
+            );
+            topSashHinge.position.set(sashHingeDepth/2, topHingeY, 0);
+            sashHingeGroup.add(topSashHinge);
+            
+            const bottomSashHinge = new THREE.Mesh(
+                new THREE.BoxGeometry(sashHingeDepth, hingeHeight, hingeThickness),
+                hardwareMaterial
+            );
+            bottomSashHinge.position.set(sashHingeDepth/2, bottomHingeY, 0);
+            sashHingeGroup.add(bottomSashHinge);
+            
+            // Position hinge groups
+            frameHingeGroup.position.x = pivotX;
+            sashHingeGroup.position.x = pivotX;
+            sashHingeGroup.position.z = pivotZ;
+            
+            // Add hinge groups to their respective parents
+            mainFrameGroup.add(frameHingeGroup);
+            sashGroup.add(sashHingeGroup);
 
-            // 5. WINDOW HANDLE
-            const handleWidth = 1.5 * scale;
-            const handleHeight = 0.5 * scale;
-            const handleDepth = 1 * scale;
-            
-            const windowHandle = new THREE.Mesh(
-                new THREE.BoxGeometry(handleWidth, handleHeight, handleDepth),
-                hardwareMaterial
-            );
-            windowHandle.position.set(sashOuterWidth/2 - sashWidth/2, 0, sashDepth + 0.5 * scale);
-            sashGroup.add(windowHandle);
+            // REMOVED THE WINDOW HANDLE
 
             // Add all components to main window group
             windowGroup.add(mainFrameGroup);
@@ -438,11 +410,13 @@
             // Position the entire window group in the wall
             windowGroup.position.y = windowPositionY;
             
-            // Store references for animation - PERFECT PIVOT POINT (EXTERNAL)
+            // Store references for animation - CORRECT FRONT PIVOT POINT
             windowGroup.userData.sash = sashGroup;
+            windowGroup.userData.frameHinges = frameHingeGroup;
+            windowGroup.userData.sashHinges = sashHingeGroup;
             windowGroup.userData.originalSashPosition = sashGroup.position.clone();
             windowGroup.userData.originalSashRotation = sashGroup.rotation.clone();
-            windowGroup.userData.pivotPoint = new THREE.Vector3(pivotX, 0, frameDepth - sashDepth + zOffset);
+            windowGroup.userData.pivotPoint = new THREE.Vector3(pivotX, 0, pivotZ);
             
             return windowGroup;
         }
@@ -490,7 +464,7 @@
                 const easeProgress = 1 - Math.pow(1 - progress, 3);
                 windowRotation = startRotation + (targetRotation - startRotation) * easeProgress;
                 
-                // PERFECT PIVOT ROTATION - no gap, rotates around external pivot point
+                // CORRECT FRONT PIVOT ROTATION
                 const sash = windowGroup.userData.sash;
                 const pivot = windowGroup.userData.pivotPoint;
                 
@@ -498,7 +472,7 @@
                 sash.position.copy(windowGroup.userData.originalSashPosition);
                 sash.rotation.copy(windowGroup.userData.originalSashRotation);
                 
-                // Rotate around perfect pivot point
+                // Rotate around correct front pivot point
                 sash.position.sub(pivot);
                 sash.rotation.y = windowRotation;
                 sash.position.applyAxisAngle(new THREE.Vector3(0, 1, 0), windowRotation);
@@ -515,7 +489,7 @@
         // Add click event listener
         renderer.domElement.addEventListener('click', onWindowClick);
 
-        // Create interior room (SIMPLIFIED - removed the mysterious grey object)
+        // Create interior room with normal colors
         const createInteriorRoom = (actualWallWidth, wallHeight, wallDepth, actualWallBottom) => {
             const roomGroup = new THREE.Group();
             
