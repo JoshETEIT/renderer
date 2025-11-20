@@ -214,12 +214,12 @@
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
 
-        // Enhanced Lighting
+        // Enhanced Lighting - Position lights for better front view
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
         scene.add(ambientLight);
 
         const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        directionalLight.position.set(5, 5, 5);
+        directionalLight.position.set(0, 5, 5); // Front-top lighting
         scene.add(directionalLight);
 
         // Window state management
@@ -623,9 +623,19 @@
         const interiorRoom = createInteriorRoom(wallWidth, wallHeight, wallDepth, wallBottom);
         scene.add(interiorRoom);
 
-        // Position camera for better view
-        camera.position.set(2, 0, 3);
-        camera.lookAt(0, 0, 0);
+        // IMPROVED CAMERA POSITION - Start from FRONT view
+        function setupCamera() {
+            // Position camera in front of the window (negative Z = front)
+            camera.position.set(0, windowPositionY, -3); // Front view, centered on window
+            camera.lookAt(0, windowPositionY, 0); // Look at the window
+            
+            // Update controls target to focus on the window
+            controls.target.set(0, windowPositionY, 0);
+            controls.update();
+        }
+
+        // Set up camera after everything is created
+        setupCamera();
 
         // Handle window resize
         window.addEventListener('resize', function() {
