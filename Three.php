@@ -18,25 +18,32 @@
             box-shadow: 0 8px 32px rgba(0,0,0,0.1);
             margin-bottom: 20px;
             backdrop-filter: blur(10px);
+            max-width: 960px;
+        }
+        .form-row {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
         }
         .form-group {
-            margin-bottom: 15px;
+            margin-bottom: 12px;
+            min-width: 160px;
         }
         label {
             display: block;
-            margin-bottom: 5px;
+            margin-bottom: 6px;
             font-weight: bold;
             color: #333;
         }
-        input[type="number"] {
-            width: 200px;
-            padding: 10px;
-            border: 2px solid #e1e5e9;
+        input[type="number"], select {
+            width: 100%;
+            padding: 8px;
             border-radius: 6px;
-            font-size: 14px;
-            transition: border-color 0.3s;
+            border: 2px solid #e1e5e9;
+            box-sizing: border-box;
         }
-        input[type="number"]:focus {
+        input[type="number"]:focus, select:focus {
             outline: none;
             border-color: #007bff;
         }
@@ -44,12 +51,10 @@
             background: linear-gradient(135deg, #007bff, #0056b3);
             color: white;
             border: none;
-            padding: 12px 24px;
+            padding: 12px 18px;
             border-radius: 6px;
             cursor: pointer;
-            font-size: 14px;
             font-weight: bold;
-            transition: transform 0.2s, box-shadow 0.2s;
         }
         button:hover {
             transform: translateY(-2px);
@@ -58,10 +63,9 @@
         #container {
             width: 100%;
             height: 600px;
-            border: none;
             border-radius: 12px;
-            overflow: hidden;
             box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            overflow: hidden;
         }
         .info {
             margin-top: 15px;
@@ -82,30 +86,88 @@
             border-radius: 4px;
             border-left: 4px solid #28a745;
         }
+        small {
+            color: #666;
+            font-size: 11px;
+        }
     </style>
 </head>
 <body>
     <div class="controls">
-        <h1>🏠 3D Window Generator</h1>
-        <p>Enter dimensions to generate a custom 3D window in a stone wall:</p>
+        <h1>🏠 3D Window Generator (Improved Hinges)</h1>
+        <p>Enter dimensions (cm) and component widths (cm). Click the window to open/close the sash.</p>
         
-        <form method="POST">
-            <div class="form-group">
-                <label for="width">Width (cm):</label>
-                <input type="number" id="width" name="width" value="<?php echo isset($_POST['width']) ? htmlspecialchars($_POST['width']) : '100'; ?>" min="10" max="500" step="1" required>
+        <form method="POST" id="paramsForm">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="width">Width (cm)</label>
+                    <input type="number" id="width" name="width" value="<?php echo isset($_POST['width']) ? htmlspecialchars($_POST['width']) : '100'; ?>" min="10" max="500" step="1" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="height">Height (cm)</label>
+                    <input type="number" id="height" name="height" value="<?php echo isset($_POST['height']) ? htmlspecialchars($_POST['height']) : '150'; ?>" min="10" max="500" step="1" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="thickness">Wall thickness (cm)</label>
+                    <input type="number" id="thickness" name="thickness" value="<?php echo isset($_POST['thickness']) ? htmlspecialchars($_POST['thickness']) : '5'; ?>" min="1" max="50" step="0.5" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="frameWidth">Frame member width (cm)</label>
+                    <input type="number" id="frameWidth" name="frameWidth" value="<?php echo isset($_POST['frameWidth']) ? htmlspecialchars($_POST['frameWidth']) : '5'; ?>" min="0.5" max="50" step="0.5">
+                </div>
+                
+                <div class="form-group">
+                    <label for="sashWidth">Sash member width (cm)</label>
+                    <input type="number" id="sashWidth" name="sashWidth" value="<?php echo isset($_POST['sashWidth']) ? htmlspecialchars($_POST['sashWidth']) : '4'; ?>" min="0.5" max="50" step="0.5">
+                </div>
+                
+                <div class="form-group">
+                    <label for="hingeCount">Hinge Count</label>
+                    <input type="number" id="hingeCount" name="hingeCount" value="<?php echo isset($_POST['hingeCount']) ? htmlspecialchars($_POST['hingeCount']) : '2'; ?>" min="1" max="4" step="1">
+                </div>
+                
+                <div class="form-group">
+                    <label for="hingeSide">Hinge Side</label>
+                    <select id="hingeSide" name="hingeSide">
+                        <option value="left" <?php echo (isset($_POST['hingeSide']) && $_POST['hingeSide'] == 'left') ? 'selected' : ''; ?>>Left Hinges</option>
+                        <option value="right" <?php echo (isset($_POST['hingeSide']) && $_POST['hingeSide'] == 'right') ? 'selected' : ''; ?>>Right Hinges</option>
+                    </select>
+                </div>
             </div>
-            
-            <div class="form-group">
-                <label for="height">Height (cm):</label>
-                <input type="number" id="height" name="height" value="<?php echo isset($_POST['height']) ? htmlspecialchars($_POST['height']) : '150'; ?>" min="10" max="500" step="1" required>
+
+            <!-- Optional: individual parts -->
+            <div style="margin-top:8px;">
+                <small>(Optional) tweak individual part widths, defaults derived from frame/sash values</small>
             </div>
-            
-            <div class="form-group">
-                <label for="thickness">Frame Thickness (cm):</label>
-                <input type="number" id="thickness" name="thickness" value="<?php echo isset($_POST['thickness']) ? htmlspecialchars($_POST['thickness']) : '5'; ?>" min="1" max="20" step="0.5" required>
+
+            <div class="form-row" style="margin-top:8px;">
+                <div class="form-group">
+                    <label for="jambWidth">Left/Right jamb width (cm)</label>
+                    <input type="number" id="jambWidth" name="jambWidth" value="<?php echo isset($_POST['jambWidth']) ? htmlspecialchars($_POST['jambWidth']) : ''; ?>" placeholder="leave empty to use frameWidth">
+                </div>
+                
+                <div class="form-group">
+                    <label for="stileWidth">Left/Right stile width (cm)</label>
+                    <input type="number" id="stileWidth" name="stileWidth" value="<?php echo isset($_POST['stileWidth']) ? htmlspecialchars($_POST['stileWidth']) : ''; ?>" placeholder="leave empty to use sashWidth">
+                </div>
+                
+                <div class="form-group">
+                    <label for="railWidth">Top/Bottom rail width (cm)</label>
+                    <input type="number" id="railWidth" name="railWidth" value="<?php echo isset($_POST['railWidth']) ? htmlspecialchars($_POST['railWidth']) : ''; ?>" placeholder="leave empty to use sashWidth">
+                </div>
+                
+                <div class="form-group">
+                    <label for="cillWidth">Frame cill thickness (cm)</label>
+                    <input type="number" id="cillWidth" name="cillWidth" value="<?php echo isset($_POST['cillWidth']) ? htmlspecialchars($_POST['cillWidth']) : ''; ?>" placeholder="optional">
+                </div>
             </div>
-            
-            <button type="submit">Generate 3D Window</button>
+
+            <div style="margin-top:12px;">
+                <button type="submit">Generate 3D Window</button>
+            </div>
         </form>
         
         <div class="info">
@@ -126,6 +188,14 @@
         const width = <?php echo isset($_POST['width']) ? floatval($_POST['width']) : 100; ?>;
         const height = <?php echo isset($_POST['height']) ? floatval($_POST['height']) : 150; ?>;
         const thickness = <?php echo isset($_POST['thickness']) ? floatval($_POST['thickness']) : 5; ?>;
+        const frameWidth = <?php echo isset($_POST['frameWidth']) ? floatval($_POST['frameWidth']) : 5; ?>;
+        const sashWidth = <?php echo isset($_POST['sashWidth']) ? floatval($_POST['sashWidth']) : 4; ?>;
+        const hingeCount = <?php echo isset($_POST['hingeCount']) ? intval($_POST['hingeCount']) : 2; ?>;
+        const hingeSide = "<?php echo isset($_POST['hingeSide']) ? htmlspecialchars($_POST['hingeSide']) : 'left'; ?>";
+        const jambWidth = <?php echo isset($_POST['jambWidth']) && $_POST['jambWidth'] !== '' ? floatval($_POST['jambWidth']) : 'null'; ?>;
+        const stileWidth = <?php echo isset($_POST['stileWidth']) && $_POST['stileWidth'] !== '' ? floatval($_POST['stileWidth']) : 'null'; ?>;
+        const railWidth = <?php echo isset($_POST['railWidth']) && $_POST['railWidth'] !== '' ? floatval($_POST['railWidth']) : 'null'; ?>;
+        const cillWidth = <?php echo isset($_POST['cillWidth']) && $_POST['cillWidth'] !== '' ? floatval($_POST['cillWidth']) : 'null'; ?>;
 
         // Scale factor for better visualization (convert cm to Three.js units)
         const scale = 0.01;
@@ -238,25 +308,41 @@
         const { wallGroup, windowPositionY, wallWidth, wallHeight, wallDepth, wallBottom, wallTop } = createWallWithSmartSizing(width, height, thickness);
         scene.add(wallGroup);
 
-        // Create detailed casement window with NORMAL COLORS and NO HANDLE
-        function createDetailedCasementWindow(windowWidth, windowHeight, frameThickness, windowPositionY) {
+        // Create detailed casement window with ALL CONFIGURABLE PARAMETERS
+        function createDetailedCasementWindow(params) {
+            const { 
+                widthCm, heightCm, frameThicknessCm, frameWidthCm, sashWidthCm, 
+                jambWidthCm, stileWidthCm, railWidthCm, cillWidthCm,
+                hingeCount, hingeSide 
+            } = params;
+
             const windowGroup = new THREE.Group();
             
-            const w = windowWidth * scale;
-            const h = windowHeight * scale;
-            const t = frameThickness * scale;
+            const w = widthCm * scale;
+            const h = heightCm * scale;
+            const t = frameThicknessCm * scale;
             
-            // Normal colors
+            // Use provided values or defaults
+            const frameW = frameWidthCm * scale;
+            const sashW = sashWidthCm * scale;
+            const jambW = (jambWidthCm !== null) ? jambWidthCm * scale : frameW;
+            const stileW = (stileWidthCm !== null) ? stileWidthCm * scale : sashW;
+            const railW = (railWidthCm !== null) ? railWidthCm * scale : sashW;
+            const cillW = (cillWidthCm !== null) ? cillWidthCm * scale : (frameW * 0.8);
+
+            // Frame material
             const frameMaterial = new THREE.MeshPhongMaterial({ 
                 color: 0x8B4513,
                 shininess: 30
             });
             
+            // Sash material
             const sashMaterial = new THREE.MeshPhongMaterial({ 
                 color: 0xDEB887,
                 shininess: 40
             });
             
+            // Hardware material
             const hardwareMaterial = new THREE.MeshPhongMaterial({ 
                 color: 0x696969,
                 shininess: 80
@@ -269,91 +355,91 @@
                 shininess: 100
             });
 
-            // DIMENSIONS - FIXED to prevent clipping
+            // DIMENSIONS
             const zOffset = 0.1 * scale;
             const frameDepth = t * 1.5;
             const sashDepth = t;
-            const frameWidth = t * 1.2;
-            const sashWidth = t * 0.8;
-            const sashClearance = 0.2 * scale; // Proper clearance
+            const sashClearance = 0.2 * scale;
 
             // 1. MAIN FRAME (fixed to wall)
             const mainFrameGroup = new THREE.Group();
             
-            // Frame pieces - FRONT FACING (positive Z is front)
-            const topFrame = new THREE.Mesh(new THREE.BoxGeometry(w, frameWidth, frameDepth), frameMaterial);
-            topFrame.position.y = h/2 - frameWidth/2;
-            topFrame.position.z = frameDepth/2 + zOffset;
-            mainFrameGroup.add(topFrame);
+            // HEAD (top frame)
+            const head = new THREE.Mesh(new THREE.BoxGeometry(w, frameW, frameDepth), frameMaterial);
+            head.position.set(0, h/2 - frameW/2, frameDepth/2 + zOffset);
+            mainFrameGroup.add(head);
 
-            const bottomFrame = new THREE.Mesh(new THREE.BoxGeometry(w, frameWidth, frameDepth), frameMaterial);
-            bottomFrame.position.y = -h/2 + frameWidth/2;
-            bottomFrame.position.z = frameDepth/2 + zOffset;
-            mainFrameGroup.add(bottomFrame);
+            // CILL (bottom frame)
+            const cill = new THREE.Mesh(new THREE.BoxGeometry(w, cillW, frameDepth), frameMaterial);
+            cill.position.set(0, -h/2 + cillW/2, frameDepth/2 + zOffset);
+            mainFrameGroup.add(cill);
 
-            const leftFrame = new THREE.Mesh(new THREE.BoxGeometry(frameWidth, h - 2*frameWidth, frameDepth), frameMaterial);
-            leftFrame.position.x = -w/2 + frameWidth/2;
-            leftFrame.position.z = frameDepth/2 + zOffset;
-            mainFrameGroup.add(leftFrame);
+            // Left and right jambs
+            const leftJamb = new THREE.Mesh(new THREE.BoxGeometry(jambW, h - frameW - cillW, frameDepth), frameMaterial);
+            leftJamb.position.set(-w/2 + jambW/2, (-h/2 + cillW) + (h - frameW - cillW)/2, frameDepth/2 + zOffset);
+            mainFrameGroup.add(leftJamb);
 
-            const rightFrame = new THREE.Mesh(new THREE.BoxGeometry(frameWidth, h - 2*frameWidth, frameDepth), frameMaterial);
-            rightFrame.position.x = w/2 - frameWidth/2;
-            rightFrame.position.z = frameDepth/2 + zOffset;
-            mainFrameGroup.add(rightFrame);
+            const rightJamb = new THREE.Mesh(new THREE.BoxGeometry(jambW, h - frameW - cillW, frameDepth), frameMaterial);
+            rightJamb.position.set(w/2 - jambW/2, (-h/2 + cillW) + (h - frameW - cillW)/2, frameDepth/2 + zOffset);
+            mainFrameGroup.add(rightJamb);
 
-            // 2. SASH (movable part) - SIMPLIFIED (no cross bars)
+            // 2. SASH (movable part)
             const sashGroup = new THREE.Group();
             
-            // Calculate sash dimensions to fit perfectly within frame with proper clearance
-            const sashOuterWidth = w - frameWidth*2 - sashClearance*2;
-            const sashOuterHeight = h - frameWidth*2 - sashClearance*2;
-            
-            // Sash frame - CORRECTED dimensions
-            const sashTop = new THREE.Mesh(new THREE.BoxGeometry(sashOuterWidth, sashWidth, sashDepth), sashMaterial);
-            sashTop.position.y = sashOuterHeight/2 - sashWidth/2;
-            sashTop.position.z = sashDepth/2;
+            // Sash outer dimensions
+            const sashOuterWidth = w - jambW - jambW - sashClearance*2;
+            const sashOuterHeight = h - frameW - cillW - sashClearance*2;
+
+            // Top rail
+            const sashTop = new THREE.Mesh(new THREE.BoxGeometry(sashOuterWidth, railW, sashDepth), sashMaterial);
+            sashTop.position.set(0, sashOuterHeight/2 - railW/2, sashDepth/2);
             sashGroup.add(sashTop);
 
-            const sashBottom = new THREE.Mesh(new THREE.BoxGeometry(sashOuterWidth, sashWidth, sashDepth), sashMaterial);
-            sashBottom.position.y = -sashOuterHeight/2 + sashWidth/2;
-            sashBottom.position.z = sashDepth/2;
+            // Bottom rail
+            const sashBottom = new THREE.Mesh(new THREE.BoxGeometry(sashOuterWidth, railW, sashDepth), sashMaterial);
+            sashBottom.position.set(0, -sashOuterHeight/2 + railW/2, sashDepth/2);
             sashGroup.add(sashBottom);
 
-            const sashLeft = new THREE.Mesh(new THREE.BoxGeometry(sashWidth, sashOuterHeight - sashWidth*2, sashDepth), sashMaterial);
-            sashLeft.position.x = -sashOuterWidth/2 + sashWidth/2;
-            sashLeft.position.z = sashDepth/2;
+            // Left stile
+            const sashLeft = new THREE.Mesh(new THREE.BoxGeometry(stileW, sashOuterHeight - railW*2, sashDepth), sashMaterial);
+            sashLeft.position.set(-sashOuterWidth/2 + stileW/2, 0, sashDepth/2);
             sashGroup.add(sashLeft);
 
-            const sashRight = new THREE.Mesh(new THREE.BoxGeometry(sashWidth, sashOuterHeight - sashWidth*2, sashDepth), sashMaterial);
-            sashRight.position.x = sashOuterWidth/2 - sashWidth/2;
-            sashRight.position.z = sashDepth/2;
+            // Right stile
+            const sashRight = new THREE.Mesh(new THREE.BoxGeometry(stileW, sashOuterHeight - railW*2, sashDepth), sashMaterial);
+            sashRight.position.set(sashOuterWidth/2 - stileW/2, 0, sashDepth/2);
             sashGroup.add(sashRight);
 
-            // Sash glass - CORRECTED to fit within sash frame
-            const glassWidth = sashOuterWidth - sashWidth*2;
-            const glassHeight = sashOuterHeight - sashWidth*2;
-            
-            const sashGlass = new THREE.Mesh(
-                new THREE.BoxGeometry(glassWidth, glassHeight, 0.01), 
-                glassMaterial
-            );
-            sashGlass.position.z = sashDepth/2 + 0.005;
-            sashGroup.add(sashGlass);
+            // Glass pane
+            const glassW = sashOuterWidth - stileW*2;
+            const glassH = sashOuterHeight - railW*2;
+            const glass = new THREE.Mesh(new THREE.BoxGeometry(glassW, glassH, 0.01), glassMaterial);
+            glass.position.set(0, 0, sashDepth/2 + 0.005);
+            sashGroup.add(glass);
 
-            // Position sash within frame - FRONT FACING
-            sashGroup.position.z = zOffset; // Front aligned with frame front
+            // Position sash within frame
+            const sashVerticalOffset = (-h/2 + cillW) + (h - frameW - cillW)/2;
+            sashGroup.position.set(0, sashVerticalOffset, zOffset);
 
-            // 3. WORKING HINGES - Split into frame and sash parts (NO PIVOT POINTS)
+            // 3. WORKING HINGES - FIXED ALIGNMENT
             const hingeWidth = 6 * scale;   // 6cm wide
             const hingeHeight = 10 * scale; // 10cm tall
             const hingeThickness = 0.5 * scale; // 0.5cm thick
             
-            // Calculate hinge positions (top 1/4 and bottom 1/4 from edges)
-            const topHingeY = h/2 - frameWidth - hingeHeight/2 - (h * 0.1); // 10% from top
-            const bottomHingeY = -h/2 + frameWidth + hingeHeight/2 + (h * 0.1); // 10% from bottom
+            // Calculate hinge positions based on count (evenly spaced in SASH COORDINATES)
+            const hingePositions = [];
+            const totalHeight = sashOuterHeight;
+            const gap = totalHeight / (hingeCount + 1);
+            
+            for (let i = 0; i < hingeCount; i++) {
+                const y = totalHeight/2 - gap*(i+1);
+                hingePositions.push(y);
+            }
             
             // CORRECT PIVOT POINT - Front outermost edge of the sash
-            const pivotX = -w/2 + frameWidth; // Left edge of the sash
+            const pivotX = hingeSide === "left" ? 
+                -w/2 + jambW :  // Left edge of the sash for left hinges
+                w/2 - jambW;    // Right edge of the sash for right hinges
             const pivotZ = 0; // FRONT face of the sash
             
             // Create hinge groups
@@ -362,35 +448,40 @@
             
             // Frame hinge parts (attached to main frame)
             const frameHingeDepth = hingeWidth / 2;
-            const topFrameHinge = new THREE.Mesh(
-                new THREE.BoxGeometry(frameHingeDepth, hingeHeight, hingeThickness),
-                hardwareMaterial
-            );
-            topFrameHinge.position.set(-frameHingeDepth/2, topHingeY, pivotZ);
-            frameHingeGroup.add(topFrameHinge);
-            
-            const bottomFrameHinge = new THREE.Mesh(
-                new THREE.BoxGeometry(frameHingeDepth, hingeHeight, hingeThickness),
-                hardwareMaterial
-            );
-            bottomFrameHinge.position.set(-frameHingeDepth/2, bottomHingeY, pivotZ);
-            frameHingeGroup.add(bottomFrameHinge);
             
             // Sash hinge parts (attached to sash)
             const sashHingeDepth = hingeWidth / 2;
-            const topSashHinge = new THREE.Mesh(
-                new THREE.BoxGeometry(sashHingeDepth, hingeHeight, hingeThickness),
-                hardwareMaterial
-            );
-            topSashHinge.position.set(sashHingeDepth/2, topHingeY, 0);
-            sashHingeGroup.add(topSashHinge);
             
-            const bottomSashHinge = new THREE.Mesh(
-                new THREE.BoxGeometry(sashHingeDepth, hingeHeight, hingeThickness),
-                hardwareMaterial
-            );
-            bottomSashHinge.position.set(sashHingeDepth/2, bottomHingeY, 0);
-            sashHingeGroup.add(bottomSashHinge);
+            // Create hinges for each position - USING SAME COORDINATE SYSTEM
+            hingePositions.forEach(sashY => {
+                // Convert sash Y coordinate to frame Y coordinate
+                const frameY = sashY + sashVerticalOffset;
+                
+                // Frame hinge part
+                const frameHinge = new THREE.Mesh(
+                    new THREE.BoxGeometry(frameHingeDepth, hingeHeight, hingeThickness),
+                    hardwareMaterial
+                );
+                
+                // Sash hinge part  
+                const sashHinge = new THREE.Mesh(
+                    new THREE.BoxGeometry(sashHingeDepth, hingeHeight, hingeThickness),
+                    hardwareMaterial
+                );
+                
+                if (hingeSide === "left") {
+                    // Left hinges - frame hinge on left, sash hinge on right of pivot
+                    frameHinge.position.set(-frameHingeDepth/2, frameY, pivotZ);
+                    sashHinge.position.set(sashHingeDepth/2, sashY, 0);
+                } else {
+                    // Right hinges - frame hinge on right, sash hinge on left of pivot
+                    frameHinge.position.set(frameHingeDepth/2, frameY, pivotZ);
+                    sashHinge.position.set(-sashHingeDepth/2, sashY, 0);
+                }
+                
+                frameHingeGroup.add(frameHinge);
+                sashHingeGroup.add(sashHinge);
+            });
             
             // Position hinge groups
             frameHingeGroup.position.x = pivotX;
@@ -401,28 +492,39 @@
             mainFrameGroup.add(frameHingeGroup);
             sashGroup.add(sashHingeGroup);
 
-            // REMOVED THE WINDOW HANDLE
-
             // Add all components to main window group
             windowGroup.add(mainFrameGroup);
             windowGroup.add(sashGroup);
             
-            // Position the entire window group in the wall
-            windowGroup.position.y = windowPositionY;
-            
-            // Store references for animation - CORRECT FRONT PIVOT POINT
+            // Store references for animation
             windowGroup.userData.sash = sashGroup;
             windowGroup.userData.frameHinges = frameHingeGroup;
             windowGroup.userData.sashHinges = sashHingeGroup;
             windowGroup.userData.originalSashPosition = sashGroup.position.clone();
             windowGroup.userData.originalSashRotation = sashGroup.rotation.clone();
             windowGroup.userData.pivotPoint = new THREE.Vector3(pivotX, 0, pivotZ);
+            windowGroup.userData.openDirection = hingeSide === "left" ? 1 : -1;
             
             return windowGroup;
         }
 
-        // Create detailed casement window
-        const windowGroup = createDetailedCasementWindow(width, height, thickness, windowPositionY);
+        // Create detailed casement window with all parameters
+        const windowParams = {
+            widthCm: width,
+            heightCm: height,
+            frameThicknessCm: thickness,
+            frameWidthCm: frameWidth,
+            sashWidthCm: sashWidth,
+            jambWidthCm: jambWidth,
+            stileWidthCm: stileWidth,
+            railWidthCm: railWidth,
+            cillWidthCm: cillWidth,
+            hingeCount: hingeCount,
+            hingeSide: hingeSide
+        };
+
+        const windowGroup = createDetailedCasementWindow(windowParams);
+        windowGroup.position.y = windowPositionY;
         scene.add(windowGroup);
         windowSash = windowGroup.userData.sash;
 
@@ -464,18 +566,19 @@
                 const easeProgress = 1 - Math.pow(1 - progress, 3);
                 windowRotation = startRotation + (targetRotation - startRotation) * easeProgress;
                 
-                // CORRECT FRONT PIVOT ROTATION
+                // CORRECT FRONT PIVOT ROTATION with direction
                 const sash = windowGroup.userData.sash;
                 const pivot = windowGroup.userData.pivotPoint;
+                const openDirection = windowGroup.userData.openDirection;
                 
                 // Reset to original position
                 sash.position.copy(windowGroup.userData.originalSashPosition);
                 sash.rotation.copy(windowGroup.userData.originalSashRotation);
                 
-                // Rotate around correct front pivot point
+                // Rotate around correct front pivot point with direction
                 sash.position.sub(pivot);
-                sash.rotation.y = windowRotation;
-                sash.position.applyAxisAngle(new THREE.Vector3(0, 1, 0), windowRotation);
+                sash.rotation.y = windowRotation * openDirection;
+                sash.position.applyAxisAngle(new THREE.Vector3(0, 1, 0), windowRotation * openDirection);
                 sash.position.add(pivot);
 
                 if (progress < 1) {
@@ -489,7 +592,7 @@
         // Add click event listener
         renderer.domElement.addEventListener('click', onWindowClick);
 
-        // Create interior room with normal colors
+        // Create interior room
         const createInteriorRoom = (actualWallWidth, wallHeight, wallDepth, actualWallBottom) => {
             const roomGroup = new THREE.Group();
             
