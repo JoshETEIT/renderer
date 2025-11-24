@@ -90,15 +90,35 @@
             color: #666;
             font-size: 11px;
         }
+        .sash-controls {
+            margin-top: 10px;
+            padding: 10px;
+            background: rgba(255, 193, 7, 0.1);
+            border-radius: 6px;
+            border-left: 4px solid #ffc107;
+        }
+        .sash-controls button {
+            margin: 0 5px;
+            padding: 8px 12px;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
     <div class="controls">
-        <h1>🏠 3D Window Generator (Improved Hinges)</h1>
+        <h1>🏠 3D Window Generator (Casement & Sash Windows)</h1>
         <p>Enter dimensions (cm) and component widths (cm). Click the window to open/close the sash.</p>
         
         <form method="POST" id="paramsForm">
             <div class="form-row">
+                <div class="form-group">
+                    <label for="windowType">Window Type</label>
+                    <select id="windowType" name="windowType">
+                        <option value="casement" <?php echo (isset($_POST['windowType']) && $_POST['windowType'] == 'casement') ? 'selected' : 'selected'; ?>>Casement Window</option>
+                        <option value="sash" <?php echo (isset($_POST['windowType']) && $_POST['windowType'] == 'sash') ? 'selected' : ''; ?>>Sliding Sash Window</option>
+                    </select>
+                </div>
+                
                 <div class="form-group">
                     <label for="width">Width (cm)</label>
                     <input type="number" id="width" name="width" value="<?php echo isset($_POST['width']) ? htmlspecialchars($_POST['width']) : '100'; ?>" min="10" max="500" step="1" required>
@@ -124,15 +144,15 @@
                     <input type="number" id="sashWidth" name="sashWidth" value="<?php echo isset($_POST['sashWidth']) ? htmlspecialchars($_POST['sashWidth']) : '4'; ?>" min="0.5" max="50" step="0.5">
                 </div>
                 
-                <div class="form-group">
+                <div class="form-group" id="hingeCountGroup">
                     <label for="hingeCount">Hinge Count</label>
                     <input type="number" id="hingeCount" name="hingeCount" value="<?php echo isset($_POST['hingeCount']) ? htmlspecialchars($_POST['hingeCount']) : '2'; ?>" min="1" max="4" step="1">
                 </div>
                 
-                <div class="form-group">
+                <div class="form-group" id="hingeSideGroup">
                     <label for="hingeSide">Hinge Side</label>
                     <select id="hingeSide" name="hingeSide">
-                        <option value="left" <?php echo (isset($_POST['hingeSide']) && $_POST['hingeSide'] == 'left') ? 'selected' : ''; ?>>Left Hinges</option>
+                        <option value="left" <?php echo (isset($_POST['hingeSide']) && $_POST['hingeSide'] == 'left') ? 'selected' : 'selected'; ?>>Left Hinges</option>
                         <option value="right" <?php echo (isset($_POST['hingeSide']) && $_POST['hingeSide'] == 'right') ? 'selected' : ''; ?>>Right Hinges</option>
                     </select>
                 </div>
@@ -172,8 +192,15 @@
         
         <div class="info">
             <p>🎮 Controls: Left click + drag to rotate • Right click + drag to pan • Scroll to zoom</p>
-            <p>🪟 <strong>Click the window to open/close it!</strong> (Only the sash moves - realistic casement window)</p>
+            <p id="interactionInfo">🪟 <strong>Click the window to open/close it!</strong> (Only the sash moves - realistic casement window)</p>
             <div class="window-state" id="windowState">Window State: Closed</div>
+            <div class="sash-controls" id="sashControls" style="display: none;">
+                <strong>Sash Controls:</strong>
+                <button type="button" id="raiseUpper">Raise Upper Sash</button>
+                <button type="button" id="lowerUpper">Lower Upper Sash</button>
+                <button type="button" id="raiseLower">Raise Lower Sash</button>
+                <button type="button" id="lowerLower">Lower Lower Sash</button>
+            </div>
             <p style="color: #5bc0de;">✨ Perfect pivot point and hinge placement</p>
         </div>
     </div>
@@ -185,6 +212,7 @@
 
     <script>
         // Get PHP values or use defaults
+        const windowType = "<?php echo isset($_POST['windowType']) ? htmlspecialchars($_POST['windowType']) : 'casement'; ?>";
         const width = <?php echo isset($_POST['width']) ? floatval($_POST['width']) : 100; ?>;
         const height = <?php echo isset($_POST['height']) ? floatval($_POST['height']) : 150; ?>;
         const thickness = <?php echo isset($_POST['thickness']) ? floatval($_POST['thickness']) : 5; ?>;
@@ -224,9 +252,40 @@
 
         // Window state management
         let windowSash = null;
+        let upperSash = null;
+        let lowerSash = null;
         let isWindowOpen = false;
         let windowRotation = 0;
+        
+        // Sash state management - using quarter positions (0-4)
+        let upperSashPosition = 0; // 0 = top position (closed), 4 = bottom position (fully open)
+        let lowerSashPosition = 0; // 0 = bottom position (closed), 4 = top position (fully open)
+        let upperSashDirection = 1; // 1 = moving down, -1 = moving up
+        let lowerSashDirection = 1; // 1 = moving up, -1 = moving down
+        
+        // Waypoint system for smooth continuous movement
+        let upperSashTarget = 0;
+        let lowerSashTarget = 0;
+        const sashSpeed = 0.04; // Reduced top speed as requested
+        const minSpeed = 0.01;  // Minimum speed when approaching target
+        const accelerationDistance = 0.5; // Distance over which to slow down
+        
         const windowStateElement = document.getElementById('windowState');
+        const sashControlsElement = document.getElementById('sashControls');
+        const interactionInfoElement = document.getElementById('interactionInfo');
+
+        // Update UI based on window type
+        if (windowType === 'sash') {
+            sashControlsElement.style.display = 'none'; // Hide button controls, using click instead
+            interactionInfoElement.innerHTML = '🪟 <strong>Click on a sash to move it!</strong> (Moves in 1/4 steps and reverses at limits)';
+            document.getElementById('hingeCountGroup').style.display = 'none';
+            document.getElementById('hingeSideGroup').style.display = 'none';
+        } else {
+            sashControlsElement.style.display = 'none';
+            interactionInfoElement.innerHTML = '🪟 <strong>Click the window to open/close it!</strong> (Only the sash moves - realistic casement window)';
+            document.getElementById('hingeCountGroup').style.display = 'block';
+            document.getElementById('hingeSideGroup').style.display = 'block';
+        }
 
         // Fixed wall creation with thicker walls
         function createWallWithSmartSizing(windowWidth, windowHeight, frameThickness) {
@@ -307,6 +366,145 @@
         // Create wall
         const { wallGroup, windowPositionY, wallWidth, wallHeight, wallDepth, wallBottom, wallTop } = createWallWithSmartSizing(width, height, thickness);
         scene.add(wallGroup);
+
+        // Create sliding sash window
+        function createSlidingSashWindow(params) {
+            const { 
+                widthCm, heightCm, frameThicknessCm, frameWidthCm, sashWidthCm, 
+                jambWidthCm, stileWidthCm, railWidthCm, cillWidthCm
+            } = params;
+
+            const windowGroup = new THREE.Group();
+            
+            const w = widthCm * scale;
+            const h = heightCm * scale;
+            const t = frameThicknessCm * scale;
+            
+            // Use provided values or defaults
+            const frameW = frameWidthCm * scale;
+            const sashW = sashWidthCm * scale;
+            const jambW = (jambWidthCm !== null) ? jambWidthCm * scale : frameW;
+            const stileW = (stileWidthCm !== null) ? stileWidthCm * scale : sashW;
+            const railW = (railWidthCm !== null) ? railWidthCm * scale : sashW;
+            const cillW = (cillWidthCm !== null) ? cillWidthCm * scale : (frameW * 0.8);
+
+            // Frame material
+            const frameMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0x8B4513,
+                shininess: 30
+            });
+            
+            // Sash material
+            const sashMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0xDEB887,
+                shininess: 40
+            });
+
+            const glassMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0xa0c8e0,
+                transparent: true,
+                opacity: 0.3,
+                shininess: 100
+            });
+
+            // DIMENSIONS
+            const zOffset = 0.1 * scale;
+            const frameDepth = t * 1.5;
+            const sashDepth = t * 0.8;
+            const sashClearance = 0.2 * scale; // Clearance to avoid friction
+
+            // 1. MAIN FRAME (fixed to wall)
+            const mainFrameGroup = new THREE.Group();
+            
+            // HEAD (top frame)
+            const head = new THREE.Mesh(new THREE.BoxGeometry(w, frameW, frameDepth), frameMaterial);
+            head.position.set(0, h/2 - frameW/2, frameDepth/2 + zOffset);
+            mainFrameGroup.add(head);
+
+            // CILL (bottom frame)
+            const cill = new THREE.Mesh(new THREE.BoxGeometry(w, cillW, frameDepth), frameMaterial);
+            cill.position.set(0, -h/2 + cillW/2, frameDepth/2 + zOffset);
+            mainFrameGroup.add(cill);
+
+            // Left and right jambs
+            const leftJamb = new THREE.Mesh(new THREE.BoxGeometry(jambW, h - frameW - cillW, frameDepth), frameMaterial);
+            leftJamb.position.set(-w/2 + jambW/2, (-h/2 + cillW) + (h - frameW - cillW)/2, frameDepth/2 + zOffset);
+            mainFrameGroup.add(leftJamb);
+
+            const rightJamb = new THREE.Mesh(new THREE.BoxGeometry(jambW, h - frameW - cillW, frameDepth), frameMaterial);
+            rightJamb.position.set(w/2 - jambW/2, (-h/2 + cillW) + (h - frameW - cillW)/2, frameDepth/2 + zOffset);
+            mainFrameGroup.add(rightJamb);
+
+            // 2. SASHES (movable parts)
+            const sashGroup = new THREE.Group();
+            
+            // Sash outer dimensions - each sash takes half the height
+            const sashOuterWidth = w - jambW - jambW;
+            const sashOuterHeight = (h - frameW - cillW) / 2;
+
+            // Create upper and lower sashes
+            const createSash = (isUpper) => {
+                const sash = new THREE.Group();
+                
+                // Top rail
+                const sashTop = new THREE.Mesh(new THREE.BoxGeometry(sashOuterWidth, railW, sashDepth), sashMaterial);
+                sashTop.position.set(0, sashOuterHeight/2 - railW/2, sashDepth/2);
+                sash.add(sashTop);
+
+                // Bottom rail
+                const sashBottom = new THREE.Mesh(new THREE.BoxGeometry(sashOuterWidth, railW, sashDepth), sashMaterial);
+                sashBottom.position.set(0, -sashOuterHeight/2 + railW/2, sashDepth/2);
+                sash.add(sashBottom);
+
+                // Left stile
+                const sashLeft = new THREE.Mesh(new THREE.BoxGeometry(stileW, sashOuterHeight - railW*2, sashDepth), sashMaterial);
+                sashLeft.position.set(-sashOuterWidth/2 + stileW/2, 0, sashDepth/2);
+                sash.add(sashLeft);
+
+                // Right stile
+                const sashRight = new THREE.Mesh(new THREE.BoxGeometry(stileW, sashOuterHeight - railW*2, sashDepth), sashMaterial);
+                sashRight.position.set(sashOuterWidth/2 - stileW/2, 0, sashDepth/2);
+                sash.add(sashRight);
+
+                // Glass pane
+                const glassW = sashOuterWidth - stileW*2;
+                const glassH = sashOuterHeight - railW*2;
+                const glass = new THREE.Mesh(new THREE.BoxGeometry(glassW, glassH, 0.01), glassMaterial);
+                glass.position.set(0, 0, sashDepth/2 + 0.005);
+                sash.add(glass);
+
+                return sash;
+            };
+
+            // Create upper and lower sashes
+            const upperSash = createSash(true);
+            const lowerSash = createSash(false);
+
+            // Position sashes within frame with proper Z-level separation
+            const sashVerticalOffset = (-h/2 + cillW) + (h - frameW - cillW)/2;
+            sashGroup.position.set(0, sashVerticalOffset, zOffset);
+            
+            // FIXED: Correct sash ordering - LOWER sash should be in front (closer to camera)
+            lowerSash.position.z = sashDepth + sashClearance; // Lower sash fully in front
+            upperSash.position.z = 0; // Upper sash at base level (behind)
+            
+            // Add sashes to group
+            sashGroup.add(upperSash);
+            sashGroup.add(lowerSash);
+
+            // Store references for animation
+            windowGroup.userData.upperSash = upperSash;
+            windowGroup.userData.lowerSash = lowerSash;
+            windowGroup.userData.sashHeight = sashOuterHeight;
+            windowGroup.userData.frameHeight = h - frameW - cillW;
+            windowGroup.userData.verticalOffset = sashVerticalOffset;
+
+            // Add all components to main window group
+            windowGroup.add(mainFrameGroup);
+            windowGroup.add(sashGroup);
+            
+            return windowGroup;
+        }
 
         // Create detailed casement window with ALL CONFIGURABLE PARAMETERS
         function createDetailedCasementWindow(params) {
@@ -508,7 +706,8 @@
             return windowGroup;
         }
 
-        // Create detailed casement window with all parameters
+        // Create window based on type
+        let windowGroup;
         const windowParams = {
             widthCm: width,
             heightCm: height,
@@ -523,29 +722,172 @@
             hingeSide: hingeSide
         };
 
-        const windowGroup = createDetailedCasementWindow(windowParams);
+        if (windowType === 'sash') {
+            windowGroup = createSlidingSashWindow(windowParams);
+            upperSash = windowGroup.userData.upperSash;
+            lowerSash = windowGroup.userData.lowerSash;
+            // Initialize targets to current positions
+            upperSashTarget = upperSashPosition;
+            lowerSashTarget = lowerSashPosition;
+            // Position sashes initially in closed position
+            updateSashPositions();
+        } else {
+            windowGroup = createDetailedCasementWindow(windowParams);
+            windowSash = windowGroup.userData.sash;
+        }
+
         windowGroup.position.y = windowPositionY;
         scene.add(windowGroup);
-        windowSash = windowGroup.userData.sash;
 
-        // Add click detection for the window
+        // Sash position update function
+        function updateSashPositions() {
+            if (windowType !== 'sash') return;
+            
+            const frameHeight = windowGroup.userData.frameHeight;
+            const sashHeight = windowGroup.userData.sashHeight;
+            const verticalOffset = windowGroup.userData.verticalOffset;
+            
+            // Calculate available travel distance (total frame height minus one sash height)
+            const travelDistance = frameHeight - sashHeight;
+            
+            // Upper sash position (0-4 quarters, 0 = top, 4 = bottom)
+            const upperY = verticalOffset + (frameHeight/2 - sashHeight/2) - (travelDistance * (upperSashPosition / 4));
+            upperSash.position.y = upperY;
+            
+            // Lower sash position (0-4 quarters, 0 = bottom, 4 = top)  
+            const lowerY = verticalOffset - (frameHeight/2 - sashHeight/2) + (travelDistance * (lowerSashPosition / 4));
+            lowerSash.position.y = lowerY;
+            
+            // Update window state display
+            const upperPercent = Math.round((upperSashPosition / 4) * 100);
+            const lowerPercent = Math.round((lowerSashPosition / 4) * 100);
+            windowStateElement.textContent = `Upper Sash: ${upperPercent}% open • Lower Sash: ${lowerPercent}% open`;
+        }
+
+        // Handle sash clicks - add waypoints to the movement queue
+        function handleSashClick(sashType) {
+            if (sashType === 'upper') {
+                let nextTarget = upperSashTarget + upperSashDirection;
+                
+                // Check bounds and reverse direction if needed
+                if (nextTarget < 0 || nextTarget > 4) {
+                    upperSashDirection *= -1;
+                    nextTarget = upperSashTarget + upperSashDirection;
+                }
+                
+                // Set the new target
+                upperSashTarget = Math.max(0, Math.min(4, nextTarget));
+                
+            } else if (sashType === 'lower') {
+                let nextTarget = lowerSashTarget + lowerSashDirection;
+                
+                // Check bounds and reverse direction if needed
+                if (nextTarget < 0 || nextTarget > 4) {
+                    lowerSashDirection *= -1;
+                    nextTarget = lowerSashTarget + lowerSashDirection;
+                }
+                
+                // Set the new target
+                lowerSashTarget = Math.max(0, Math.min(4, nextTarget));
+            }
+        }
+
+        // Continuous animation function with smooth acceleration/deceleration
+        function animateSashes() {
+            // Animate upper sash with smooth acceleration/deceleration
+            if (Math.abs(upperSashPosition - upperSashTarget) > 0.001) {
+                const distance = Math.abs(upperSashTarget - upperSashPosition);
+                const direction = upperSashTarget > upperSashPosition ? 1 : -1;
+                
+                // Calculate speed based on distance to target (slow down as we approach)
+                let currentSpeed = sashSpeed;
+                if (distance < accelerationDistance) {
+                    // Slow down as we approach the target
+                    currentSpeed = minSpeed + (sashSpeed - minSpeed) * (distance / accelerationDistance);
+                }
+                
+                upperSashPosition += currentSpeed * direction;
+                
+                // Prevent overshooting
+                if ((direction > 0 && upperSashPosition > upperSashTarget) || 
+                    (direction < 0 && upperSashPosition < upperSashTarget)) {
+                    upperSashPosition = upperSashTarget;
+                }
+            }
+            
+            // Animate lower sash with smooth acceleration/deceleration
+            if (Math.abs(lowerSashPosition - lowerSashTarget) > 0.001) {
+                const distance = Math.abs(lowerSashTarget - lowerSashPosition);
+                const direction = lowerSashTarget > lowerSashPosition ? 1 : -1;
+                
+                // Calculate speed based on distance to target (slow down as we approach)
+                let currentSpeed = sashSpeed;
+                if (distance < accelerationDistance) {
+                    // Slow down as we approach the target
+                    currentSpeed = minSpeed + (sashSpeed - minSpeed) * (distance / accelerationDistance);
+                }
+                
+                lowerSashPosition += currentSpeed * direction;
+                
+                // Prevent overshooting
+                if ((direction > 0 && lowerSashPosition > lowerSashTarget) || 
+                    (direction < 0 && lowerSashPosition < lowerSashTarget)) {
+                    lowerSashPosition = lowerSashTarget;
+                }
+            }
+            
+            updateSashPositions();
+        }
+
+        // Add click detection for the sashes - FIXED to prioritize back sash
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
 
         function onWindowClick(event) {
-            const rect = renderer.domElement.getBoundingClientRect();
-            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            if (windowType === 'casement') {
+                // Casement window behavior
+                const rect = renderer.domElement.getBoundingClientRect();
+                mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-            raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObject(windowGroup, true);
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObject(windowGroup, true);
 
-            if (intersects.length > 0) {
-                toggleWindow();
+                if (intersects.length > 0) {
+                    toggleWindow();
+                }
+            } else if (windowType === 'sash') {
+                // Sash window behavior - FIXED: Check back sash first, then front
+                const rect = renderer.domElement.getBoundingClientRect();
+                mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+                raycaster.setFromCamera(mouse, camera);
+                
+                // Get ALL intersects and sort by distance (closest first)
+                const allIntersects = raycaster.intersectObjects([upperSash, lowerSash], true);
+                
+                if (allIntersects.length > 0) {
+                    // Find which sash was clicked by checking the object's parent chain
+                    let clickedObject = allIntersects[0].object;
+                    
+                    // Traverse up the parent chain to find which sash group this belongs to
+                    while (clickedObject && clickedObject !== upperSash && clickedObject !== lowerSash) {
+                        clickedObject = clickedObject.parent;
+                    }
+                    
+                    if (clickedObject === upperSash) {
+                        handleSashClick('upper');
+                    } else if (clickedObject === lowerSash) {
+                        handleSashClick('lower');
+                    }
+                }
             }
         }
 
         function toggleWindow() {
+            if (windowType !== 'casement') return;
+            
             isWindowOpen = !isWindowOpen;
             const targetRotation = isWindowOpen ? Math.PI / 2 : 0;
             
@@ -649,6 +991,12 @@
         function animate() {
             requestAnimationFrame(animate);
             controls.update();
+            
+            // Continuous sash animation
+            if (windowType === 'sash') {
+                animateSashes();
+            }
+            
             renderer.render(scene, camera);
         }
 
