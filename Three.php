@@ -66,6 +66,7 @@
             border-radius: 12px;
             box-shadow: 0 8px 32px rgba(0,0,0,0.2);
             overflow: hidden;
+            position: relative;
         }
         .info {
             margin-top: 15px;
@@ -102,6 +103,32 @@
             padding: 8px 12px;
             font-size: 14px;
         }
+        .gizmo-info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            z-index: 100;
+        }
+        .auto-adjust {
+            color: #28a745;
+            font-size: 11px;
+            margin-top: 4px;
+        }
+        .bead-diagram {
+            margin-top: 10px;
+            padding: 10px;
+            background: rgba(108, 117, 125, 0.1);
+            border-radius: 6px;
+            border-left: 4px solid #6c757d;
+            font-family: monospace;
+            font-size: 10px;
+            line-height: 1.2;
+        }
     </style>
 </head>
 <body>
@@ -137,11 +164,13 @@
                 <div class="form-group">
                     <label for="frameWidth">Frame member width (cm)</label>
                     <input type="number" id="frameWidth" name="frameWidth" value="<?php echo isset($_POST['frameWidth']) ? htmlspecialchars($_POST['frameWidth']) : '5'; ?>" min="0.5" max="50" step="0.5">
+                    <div class="auto-adjust" id="frameWidthAdjust"></div>
                 </div>
                 
                 <div class="form-group">
                     <label for="sashWidth">Sash member width (cm)</label>
                     <input type="number" id="sashWidth" name="sashWidth" value="<?php echo isset($_POST['sashWidth']) ? htmlspecialchars($_POST['sashWidth']) : '4'; ?>" min="0.5" max="50" step="0.5">
+                    <div class="auto-adjust" id="sashWidthAdjust"></div>
                 </div>
                 
                 <div class="form-group" id="hingeCountGroup">
@@ -167,21 +196,25 @@
                 <div class="form-group">
                     <label for="jambWidth">Left/Right jamb width (cm)</label>
                     <input type="number" id="jambWidth" name="jambWidth" value="<?php echo isset($_POST['jambWidth']) ? htmlspecialchars($_POST['jambWidth']) : ''; ?>" placeholder="leave empty to use frameWidth">
+                    <div class="auto-adjust" id="jambWidthAdjust"></div>
                 </div>
                 
                 <div class="form-group">
                     <label for="stileWidth">Left/Right stile width (cm)</label>
                     <input type="number" id="stileWidth" name="stileWidth" value="<?php echo isset($_POST['stileWidth']) ? htmlspecialchars($_POST['stileWidth']) : ''; ?>" placeholder="leave empty to use sashWidth">
+                    <div class="auto-adjust" id="stileWidthAdjust"></div>
                 </div>
                 
                 <div class="form-group">
                     <label for="railWidth">Top/Bottom rail width (cm)</label>
                     <input type="number" id="railWidth" name="railWidth" value="<?php echo isset($_POST['railWidth']) ? htmlspecialchars($_POST['railWidth']) : ''; ?>" placeholder="leave empty to use sashWidth">
+                    <div class="auto-adjust" id="railWidthAdjust"></div>
                 </div>
                 
                 <div class="form-group">
                     <label for="cillWidth">Frame cill thickness (cm)</label>
                     <input type="number" id="cillWidth" name="cillWidth" value="<?php echo isset($_POST['cillWidth']) ? htmlspecialchars($_POST['cillWidth']) : ''; ?>" placeholder="optional">
+                    <div class="auto-adjust" id="cillWidthAdjust"></div>
                 </div>
             </div>
 
@@ -201,11 +234,24 @@
                 <button type="button" id="raiseLower">Raise Lower Sash</button>
                 <button type="button" id="lowerLower">Lower Lower Sash</button>
             </div>
-            <p style="color: #5bc0de;">✨ Perfect pivot point and hinge placement</p>
+            <div class="bead-diagram">
+                <strong>Frame Depth Structure (Z positions from front):</strong><br>
+                front bead (z=0) | top sash | parting bead | bottom sash | back bead | frame depth
+            </div>
+            <p style="color: #5bc0de;">✨ Perfect pivot point and hinge placement with realistic beading</p>
         </div>
     </div>
 
-    <div id="container"></div>
+    <div id="container">
+        <div class="gizmo-info" id="gizmoInfo">
+            XYZ Gizmo<br>
+            Red: X-axis (Right)<br>
+            Green: Y-axis (Up)<br>
+            Blue: Z-axis (Forward)<br>
+            Red Cube: Front Sash<br>
+            Blue Cube: Back Sash
+        </div>
+    </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.min.js"></script>
@@ -227,6 +273,110 @@
 
         // Scale factor for better visualization (convert cm to Three.js units)
         const scale = 0.01;
+
+        // Logical relationships and constraints
+        const MIN_CLEARANCE = 0.2; // Minimum clearance between sashes in cm
+        const MIN_SASH_GAP = 0.5; // Minimum gap between sashes in sliding sash windows
+        const BEAD_WIDTH = 1.0; // Width of beads in cm
+        const BEAD_DEPTH = 0.8; // Depth of beads in cm
+        
+        // Function to calculate required frame depth based on sash configuration
+        function calculateRequiredFrameDepth(sashDepth, windowType) {
+            if (windowType === 'sash') {
+                // For sliding sash: frame must accommodate both sashes + beads + clearances
+                // Structure: front bead + upper sash + parting bead + lower sash + back bead
+                return BEAD_DEPTH + sashDepth + BEAD_DEPTH + sashDepth + BEAD_DEPTH + MIN_CLEARANCE;
+            } else {
+                // For casement: frame must be at least as deep as the sash
+                return sashDepth + MIN_CLEARANCE;
+            }
+        }
+        
+        // Function to validate and auto-adjust dimensions
+        function validateDimensions() {
+            const currentFrameWidth = parseFloat(document.getElementById('frameWidth').value) || frameWidth;
+            const currentSashWidth = parseFloat(document.getElementById('sashWidth').value) || sashWidth;
+            const currentThickness = parseFloat(document.getElementById('thickness').value) || thickness;
+            
+            // Calculate required frame depth based on sash configuration
+            const requiredFrameDepth = calculateRequiredFrameDepth(currentThickness, windowType);
+            
+            // Check if current thickness is sufficient
+            if (currentThickness < requiredFrameDepth) {
+                document.getElementById('thickness').value = Math.ceil(requiredFrameDepth * 2) / 2; // Round up to nearest 0.5
+                showAdjustmentMessage('thicknessAdjust', `Increased to ${document.getElementById('thickness').value}cm to accommodate sashes and beads`);
+            } else {
+                hideAdjustmentMessage('thicknessAdjust');
+            }
+            
+            // Validate frame width vs sash width
+            if (currentFrameWidth < currentSashWidth) {
+                document.getElementById('frameWidth').value = currentSashWidth;
+                showAdjustmentMessage('frameWidthAdjust', `Increased to match sash width`);
+            } else {
+                hideAdjustmentMessage('frameWidthAdjust');
+            }
+            
+            // Validate individual parts
+            validateIndividualParts(currentFrameWidth, currentSashWidth);
+        }
+        
+        function validateIndividualParts(frameWidth, sashWidth) {
+            // Jamb width validation
+            const jambInput = document.getElementById('jambWidth');
+            if (jambInput.value && parseFloat(jambInput.value) > frameWidth) {
+                jambInput.value = frameWidth;
+                showAdjustmentMessage('jambWidthAdjust', `Reduced to match frame width`);
+            } else {
+                hideAdjustmentMessage('jambWidthAdjust');
+            }
+            
+            // Stile width validation
+            const stileInput = document.getElementById('stileWidth');
+            if (stileInput.value && parseFloat(stileInput.value) > sashWidth) {
+                stileInput.value = sashWidth;
+                showAdjustmentMessage('stileWidthAdjust', `Reduced to match sash width`);
+            } else {
+                hideAdjustmentMessage('stileWidthAdjust');
+            }
+            
+            // Rail width validation
+            const railInput = document.getElementById('railWidth');
+            if (railInput.value && parseFloat(railInput.value) > sashWidth) {
+                railInput.value = sashWidth;
+                showAdjustmentMessage('railWidthAdjust', `Reduced to match sash width`);
+            } else {
+                hideAdjustmentMessage('railWidthAdjust');
+            }
+        }
+        
+        function showAdjustmentMessage(elementId, message) {
+            const element = document.getElementById(elementId);
+            element.textContent = `🔄 ${message}`;
+            element.style.display = 'block';
+        }
+        
+        function hideAdjustmentMessage(elementId) {
+            const element = document.getElementById(elementId);
+            element.style.display = 'none';
+        }
+        
+        // Add event listeners for real-time validation
+        document.addEventListener('DOMContentLoaded', function() {
+            // Validate on page load
+            validateDimensions();
+            
+            // Add change listeners for real-time validation
+            const inputs = ['thickness', 'frameWidth', 'sashWidth', 'jambWidth', 'stileWidth', 'railWidth'];
+            inputs.forEach(inputId => {
+                document.getElementById(inputId).addEventListener('change', validateDimensions);
+            });
+            
+            // Update info when window type changes
+            document.getElementById('windowType').addEventListener('change', function() {
+                validateDimensions();
+            });
+        });
 
         // Scene setup
         const scene = new THREE.Scene();
@@ -286,6 +436,55 @@
             document.getElementById('hingeCountGroup').style.display = 'block';
             document.getElementById('hingeSideGroup').style.display = 'block';
         }
+
+        // Create XYZ Gizmo - SMALLER VERSION
+        function createGizmo() {
+            const gizmoGroup = new THREE.Group();
+            
+            // Smaller axis lengths
+            const axisLength = 100 * scale;
+            
+            // Create axes with arrows
+            const axes = [
+                { color: 0xff0000, direction: new THREE.Vector3(1, 0, 0), name: 'X' }, // Red - Right
+                { color: 0x00ff00, direction: new THREE.Vector3(0, 1, 0), name: 'Y' }, // Green - Up
+                { color: 0x0000ff, direction: new THREE.Vector3(0, 0, 1), name: 'Z' }  // Blue - Forward
+            ];
+            
+            axes.forEach(axis => {
+                // Main axis line
+                const geometry = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(0, 0, 0),
+                    axis.direction.clone().multiplyScalar(axisLength)
+                ]);
+                const material = new THREE.LineBasicMaterial({ color: axis.color });
+                const line = new THREE.Line(geometry, material);
+                gizmoGroup.add(line);
+                
+                // Smaller arrow head
+                const coneGeometry = new THREE.ConeGeometry(3 * scale, 10 * scale, 8);
+                const coneMaterial = new THREE.MeshBasicMaterial({ color: axis.color });
+                const cone = new THREE.Mesh(coneGeometry, coneMaterial);
+                cone.position.copy(axis.direction.clone().multiplyScalar(axisLength));
+                cone.lookAt(axis.direction.clone().multiplyScalar(axisLength + 1));
+                gizmoGroup.add(cone);
+            });
+            
+            // Smaller origin sphere
+            const originGeometry = new THREE.SphereGeometry(2 * scale, 8, 8);
+            const originMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const origin = new THREE.Mesh(originGeometry, originMaterial);
+            gizmoGroup.add(origin);
+            
+            // Position gizmo in bottom-left corner
+            gizmoGroup.position.set(-180 * scale, -120 * scale, -80 * scale);
+            
+            return gizmoGroup;
+        }
+
+        // Add gizmo to scene
+        const gizmo = createGizmo();
+        scene.add(gizmo);
 
         // Fixed wall creation with thicker walls
         function createWallWithSmartSizing(windowWidth, windowHeight, frameThickness) {
@@ -367,7 +566,7 @@
         const { wallGroup, windowPositionY, wallWidth, wallHeight, wallDepth, wallBottom, wallTop } = createWallWithSmartSizing(width, height, thickness);
         scene.add(wallGroup);
 
-        // Create sliding sash window
+        // Create sliding sash window with COMPLETE rectangular bead frames
         function createSlidingSashWindow(params) {
             const { 
                 widthCm, heightCm, frameThicknessCm, frameWidthCm, sashWidthCm, 
@@ -400,6 +599,12 @@
                 shininess: 40
             });
 
+            // Bead material (lighter wood)
+            const beadMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0xD2B48C,
+                shininess: 20
+            });
+
             const glassMaterial = new THREE.MeshPhongMaterial({ 
                 color: 0xa0c8e0,
                 transparent: true,
@@ -407,11 +612,23 @@
                 shininess: 100
             });
 
-            // DIMENSIONS
+            // DIMENSIONS - Use logical relationships with beads
             const zOffset = 0.1 * scale;
-            const frameDepth = t * 1.5;
             const sashDepth = t * 0.8;
-            const sashClearance = 0.2 * scale; // Clearance to avoid friction
+            const sashClearance = MIN_CLEARANCE * scale;
+            
+            // Bead dimensions
+            const beadW = BEAD_WIDTH * scale;
+            const beadD = BEAD_DEPTH * scale;
+
+            // CALCULATE Z POSITIONS ACCORDING TO YOUR DIAGRAM
+            // Front of frame is z=0
+            const frontBeadZ = 0 + beadD/2;
+            const topSashZ = beadD + sashDepth/2;
+            const partingBeadZ = beadD + sashDepth + beadD/2;
+            const bottomSashZ = beadD + sashDepth + beadD + sashDepth/2;
+            const backBeadZ = beadD + sashDepth + beadD + sashDepth + beadD/2;
+            const frameDepth = beadD + sashDepth + beadD + sashDepth + beadD; // Total frame depth
 
             // 1. MAIN FRAME (fixed to wall)
             const mainFrameGroup = new THREE.Group();
@@ -435,12 +652,54 @@
             rightJamb.position.set(w/2 - jambW/2, (-h/2 + cillW) + (h - frameW - cillW)/2, frameDepth/2 + zOffset);
             mainFrameGroup.add(rightJamb);
 
-            // 2. SASHES (movable parts)
+            // 2. BEADS - COMPLETE RECTANGULAR FRAMES at each Z position
+            const beadGroup = new THREE.Group();
+            
+            const openingWidth = w - jambW * 2;
+            const openingHeight = h - frameW - cillW;
+
+            // Function to create a complete rectangular bead frame
+            const createBeadFrame = (zPosition, beadDepth) => {
+                const frameGroup = new THREE.Group();
+                
+                // Top bead
+                const topBead = new THREE.Mesh(new THREE.BoxGeometry(openingWidth, beadW, beadDepth), beadMaterial);
+                topBead.position.set(0, openingHeight/2 - beadW/2, zPosition);
+                frameGroup.add(topBead);
+                
+                // Bottom bead
+                const bottomBead = new THREE.Mesh(new THREE.BoxGeometry(openingWidth, beadW, beadDepth), beadMaterial);
+                bottomBead.position.set(0, -openingHeight/2 + beadW/2, zPosition);
+                frameGroup.add(bottomBead);
+                
+                // Left bead
+                const leftBead = new THREE.Mesh(new THREE.BoxGeometry(beadW, openingHeight - beadW*2, beadDepth), beadMaterial);
+                leftBead.position.set(-openingWidth/2 + beadW/2, 0, zPosition);
+                frameGroup.add(leftBead);
+                
+                // Right bead
+                const rightBead = new THREE.Mesh(new THREE.BoxGeometry(beadW, openingHeight - beadW*2, beadDepth), beadMaterial);
+                rightBead.position.set(openingWidth/2 - beadW/2, 0, zPosition);
+                frameGroup.add(rightBead);
+                
+                return frameGroup;
+            };
+
+            // Create bead frames at each Z position
+            const frontBeadFrame = createBeadFrame(frontBeadZ + zOffset, beadD);
+            const partingBeadFrame = createBeadFrame(partingBeadZ + zOffset, beadD);
+            const backBeadFrame = createBeadFrame(backBeadZ + zOffset, beadD);
+            
+            beadGroup.add(frontBeadFrame);
+            beadGroup.add(partingBeadFrame);
+            beadGroup.add(backBeadFrame);
+
+            // 3. SASHES (movable parts) - positioned according to your exact diagram
             const sashGroup = new THREE.Group();
             
             // Sash outer dimensions - each sash takes half the height
-            const sashOuterWidth = w - jambW - jambW;
-            const sashOuterHeight = (h - frameW - cillW) / 2;
+            const sashOuterWidth = openingWidth - beadW*2; // Account for beads on both sides
+            const sashOuterHeight = openingHeight / 2;
 
             // Create upper and lower sashes
             const createSash = (isUpper) => {
@@ -448,29 +707,29 @@
                 
                 // Top rail
                 const sashTop = new THREE.Mesh(new THREE.BoxGeometry(sashOuterWidth, railW, sashDepth), sashMaterial);
-                sashTop.position.set(0, sashOuterHeight/2 - railW/2, sashDepth/2);
+                sashTop.position.set(0, sashOuterHeight/2 - railW/2, 0);
                 sash.add(sashTop);
 
                 // Bottom rail
                 const sashBottom = new THREE.Mesh(new THREE.BoxGeometry(sashOuterWidth, railW, sashDepth), sashMaterial);
-                sashBottom.position.set(0, -sashOuterHeight/2 + railW/2, sashDepth/2);
+                sashBottom.position.set(0, -sashOuterHeight/2 + railW/2, 0);
                 sash.add(sashBottom);
 
                 // Left stile
                 const sashLeft = new THREE.Mesh(new THREE.BoxGeometry(stileW, sashOuterHeight - railW*2, sashDepth), sashMaterial);
-                sashLeft.position.set(-sashOuterWidth/2 + stileW/2, 0, sashDepth/2);
+                sashLeft.position.set(-sashOuterWidth/2 + stileW/2, 0, 0);
                 sash.add(sashLeft);
 
                 // Right stile
                 const sashRight = new THREE.Mesh(new THREE.BoxGeometry(stileW, sashOuterHeight - railW*2, sashDepth), sashMaterial);
-                sashRight.position.set(sashOuterWidth/2 - stileW/2, 0, sashDepth/2);
+                sashRight.position.set(sashOuterWidth/2 - stileW/2, 0, 0);
                 sash.add(sashRight);
 
                 // Glass pane
                 const glassW = sashOuterWidth - stileW*2;
                 const glassH = sashOuterHeight - railW*2;
                 const glass = new THREE.Mesh(new THREE.BoxGeometry(glassW, glassH, 0.01), glassMaterial);
-                glass.position.set(0, 0, sashDepth/2 + 0.005);
+                glass.position.set(0, 0, 0.005);
                 sash.add(glass);
 
                 return sash;
@@ -480,13 +739,13 @@
             const upperSash = createSash(true);
             const lowerSash = createSash(false);
 
-            // Position sashes within frame with proper Z-level separation
-            const sashVerticalOffset = (-h/2 + cillW) + (h - frameW - cillW)/2;
+            // Position sashes within frame with EXACT Z positions from your diagram
+            const sashVerticalOffset = (-h/2 + cillW) + openingHeight/2;
             sashGroup.position.set(0, sashVerticalOffset, zOffset);
             
-            // FIXED: Correct sash ordering - LOWER sash should be in front (closer to camera)
-            lowerSash.position.z = sashDepth + sashClearance; // Lower sash fully in front
-            upperSash.position.z = 0; // Upper sash at base level (behind)
+            // Set EXACT Z positions according to your diagram
+            upperSash.position.z = topSashZ; // Behind front bead
+            lowerSash.position.z = bottomSashZ; // Behind parting bead
             
             // Add sashes to group
             sashGroup.add(upperSash);
@@ -496,16 +755,18 @@
             windowGroup.userData.upperSash = upperSash;
             windowGroup.userData.lowerSash = lowerSash;
             windowGroup.userData.sashHeight = sashOuterHeight;
-            windowGroup.userData.frameHeight = h - frameW - cillW;
+            windowGroup.userData.frameHeight = openingHeight;
             windowGroup.userData.verticalOffset = sashVerticalOffset;
 
             // Add all components to main window group
             windowGroup.add(mainFrameGroup);
+            windowGroup.add(beadGroup);
             windowGroup.add(sashGroup);
             
             return windowGroup;
         }
 
+        // [Rest of the code remains the same - casement window creation, interior room, animation, etc.]
         // Create detailed casement window with ALL CONFIGURABLE PARAMETERS
         function createDetailedCasementWindow(params) {
             const { 
@@ -553,11 +814,11 @@
                 shininess: 100
             });
 
-            // DIMENSIONS
+            // DIMENSIONS - Use logical relationships
             const zOffset = 0.1 * scale;
             const frameDepth = t * 1.5;
-            const sashDepth = t;
-            const sashClearance = 0.2 * scale;
+            const sashDepth = t * 0.8;
+            const sashClearance = MIN_CLEARANCE * scale;
 
             // 1. MAIN FRAME (fixed to wall)
             const mainFrameGroup = new THREE.Group();
@@ -738,6 +999,37 @@
 
         windowGroup.position.y = windowPositionY;
         scene.add(windowGroup);
+
+        // Create interior room
+        const createInteriorRoom = (actualWallWidth, wallHeight, wallDepth, actualWallBottom) => {
+            const roomGroup = new THREE.Group();
+            
+            const floorThickness = 10 * scale;
+            const floorDepth = 200 * scale;
+            
+            const floor = new THREE.Mesh(
+                new THREE.BoxGeometry(actualWallWidth, floorThickness, floorDepth),
+                new THREE.MeshPhongMaterial({ color: 0x8B4513 })
+            );
+            floor.position.y = actualWallBottom;
+            floor.position.z = wallDepth/2 + floorDepth/2;
+            roomGroup.add(floor);
+
+            const backWallThickness = 2 * scale;
+            
+            const backWall = new THREE.Mesh(
+                new THREE.BoxGeometry(actualWallWidth, wallHeight, backWallThickness),
+                new THREE.MeshPhongMaterial({ color: 0xf5f5f5 })
+            );
+            backWall.position.z = wallDepth/2 + floorDepth - backWallThickness/2;
+            backWall.position.y = actualWallBottom + wallHeight/2;
+            roomGroup.add(backWall);
+
+            return roomGroup;
+        };
+
+        const interiorRoom = createInteriorRoom(wallWidth, wallHeight, wallDepth, wallBottom);
+        scene.add(interiorRoom);
 
         // Sash position update function
         function updateSashPositions() {
@@ -933,37 +1225,6 @@
 
         // Add click event listener
         renderer.domElement.addEventListener('click', onWindowClick);
-
-        // Create interior room
-        const createInteriorRoom = (actualWallWidth, wallHeight, wallDepth, actualWallBottom) => {
-            const roomGroup = new THREE.Group();
-            
-            const floorThickness = 10 * scale;
-            const floorDepth = 200 * scale;
-            
-            const floor = new THREE.Mesh(
-                new THREE.BoxGeometry(actualWallWidth, floorThickness, floorDepth),
-                new THREE.MeshPhongMaterial({ color: 0x8B4513 })
-            );
-            floor.position.y = actualWallBottom;
-            floor.position.z = wallDepth/2 + floorDepth/2;
-            roomGroup.add(floor);
-
-            const backWallThickness = 2 * scale;
-            
-            const backWall = new THREE.Mesh(
-                new THREE.BoxGeometry(actualWallWidth, wallHeight, backWallThickness),
-                new THREE.MeshPhongMaterial({ color: 0xf5f5f5 })
-            );
-            backWall.position.z = wallDepth/2 + floorDepth - backWallThickness/2;
-            backWall.position.y = actualWallBottom + wallHeight/2;
-            roomGroup.add(backWall);
-
-            return roomGroup;
-        };
-
-        const interiorRoom = createInteriorRoom(wallWidth, wallHeight, wallDepth, wallBottom);
-        scene.add(interiorRoom);
 
         // IMPROVED CAMERA POSITION - Start from FRONT view
         function setupCamera() {
